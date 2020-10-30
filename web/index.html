@@ -15,20 +15,8 @@
 			let BOOMTexture;
 			let GameOver;
 			let Life = true;
-
-			class SpaceObject {
-			  constructor(Sprite, PowerForwardEngine, PowerTurnEngine, X, Y, SpeedX, SpeedY, MaxSpeed, Angle, ChangeAnrgleSpeed, MaxChangeAnrgleSpeed) { 
-			    this.Sprite = Sprite;
-			    this.PowerForwardEngine = PowerForwardEngine;
-			    this.PowerTurnEngine = PowerTurnEngine;
-			  	this.X = X; this.Y = Y;
-			  	this.SpeedX = SpeedX; this.SpeedY = SpeedY;
-			    this.MaxSpeed = MaxSpeed;
-			  	this.Angle = Angle;
-			  	this.ChangeAnrgleSpeed = ChangeAnrgleSpeed;
-			    this.MaxChangeAnrgleSpeed = MaxChangeAnrgleSpeed;
-			  }
-			}
+			let SpeedLaser = 5;
+			let GunReady = true;
 
 			function sleep(milliseconds) {
 			  const date = Date.now();
@@ -82,8 +70,51 @@
   			return BOOM;
 			} 
 
-			SpaceShip = new SpaceObject(null, 0.1, 0.01, 640, 360, 0, 0, 1, 0, 0, 0.1);
-			Asteroids = new Array(15);
+			function Dead() {
+				setTimeout(()=>{app.stage.addChild(GameOver);}, 1000);
+  			setTimeout(()=>{location.reload();}, 5000);
+  			AddBOOM(SpaceShip.X, SpaceShip.Y).play();
+  			app.stage.removeChild(SpaceShip.Sprite);
+  			Life = false;
+			}
+
+			function GetSpeedsForAngle(Angle, Engine) {
+				if(Angle < 90) {
+        	SpeedX = Math.sin(Angle *Math.PI/180) * Engine;
+        	SpeedY = -1*Math.cos(Angle *Math.PI/180) * Engine;
+        }
+				else if(Angle < 180) {
+        	SpeedX = Math.cos((Angle-90) *Math.PI/180) * Engine;
+        	SpeedY = Math.sin((Angle-90) *Math.PI/180) * Engine;
+        }
+        else if(Angle < 270) {
+        	SpeedX = -1*Math.sin((Angle-180) *Math.PI/180) * Engine;
+        	SpeedY = Math.cos((Angle-180) *Math.PI/180) * Engine;
+        }
+        else {
+        	SpeedX = -1*Math.cos((Angle-270) *Math.PI/180) * Engine;
+        	SpeedY = -1*Math.sin((Angle-270) *Math.PI/180) * Engine;
+        }
+        return [SpeedX, SpeedY];
+			}
+
+			class SpaceObject {
+			  constructor(Sprite, PowerForwardEngine, PowerTurnEngine, X, Y, SpeedX, SpeedY, MaxSpeed, Angle, ChangeAnrgleSpeed, MaxChangeAnrgleSpeed) { 
+			    this.Sprite = Sprite;
+			    this.PowerForwardEngine = PowerForwardEngine;
+			    this.PowerTurnEngine = PowerTurnEngine;
+			  	this.X = X; this.Y = Y;
+			  	this.SpeedX = SpeedX; this.SpeedY = SpeedY;
+			    this.MaxSpeed = MaxSpeed;
+			  	this.Angle = Angle;
+			  	this.ChangeAnrgleSpeed = ChangeAnrgleSpeed;
+			    this.MaxChangeAnrgleSpeed = MaxChangeAnrgleSpeed;
+			  }
+			}
+
+			let SpaceShip = new SpaceObject(null, 0.1, 0.5, 640, 360, 0, 0, 1.5, random(0, 360), random(0, 0.05), 3);
+			let Asteroids = new Array(15);
+			let Lasers = new Array();
 
 			document.addEventListener('keydown', (event) => {
 			  if(event.key === 'd' || event.key === 'ArrowRight') { 
@@ -95,29 +126,36 @@
 			  	if(SpaceShip.ChangeAnrgleSpeed < -1*SpaceShip.MaxChangeAnrgleSpeed) { SpaceShip.ChangeAnrgleSpeed = -1*SpaceShip.MaxChangeAnrgleSpeed; }
 			  }
 
-			  Angle = (SpaceShip.Angle+36000000)%6 * 60;
-			  if(event.key === 'w' || event.key === 'ArrowUp') { 
-          if(Angle < 90) {
-          	SpaceShip.SpeedX += Math.sin(Angle *Math.PI/180) * SpaceShip.PowerForwardEngine;
-          	SpaceShip.SpeedY -= Math.cos(Angle *Math.PI/180) * SpaceShip.PowerForwardEngine;
-          }
-					else if(Angle < 180) {
-          	SpaceShip.SpeedX -= Math.cos(Angle *Math.PI/180) * SpaceShip.PowerForwardEngine;
-          	SpaceShip.SpeedY += Math.sin(Angle *Math.PI/180) * SpaceShip.PowerForwardEngine;
-          }
-          else if(Angle < 270) {
-          	SpaceShip.SpeedX += Math.sin(Angle *Math.PI/180) * SpaceShip.PowerForwardEngine;
-          	SpaceShip.SpeedY -= Math.cos(Angle *Math.PI/180) * SpaceShip.PowerForwardEngine;
-          }
-          else {
-          	SpaceShip.SpeedX -= Math.cos(Angle *Math.PI/180) * SpaceShip.PowerForwardEngine;
-          	SpaceShip.SpeedY += Math.sin(Angle *Math.PI/180) * SpaceShip.PowerForwardEngine;
-          }
+			  if((event.key === ' ' || event.key === 'Spacebar') && GunReady) { 
+			  	GunReady = false;
+	  			setTimeout(()=>{GunReady = true;}, 1000);
+			  	Angle = (SpaceShip.Angle+36000000)%360;
+			  	let laser = new SpaceObject(null, 0, 0, SpaceShip.X, SpaceShip.Y, 0, 0, SpeedLaser, (SpaceShip.Angle+6000000)%6, 0, 0);
+			  	laser.Sprite = new PIXI.Sprite(PIXI.loader.resources["sprites/laser.png"].texture);
+          let Speeds = GetSpeedsForAngle(Angle, SpeedLaser);
+			  	laser.SpeedX = Speeds[0];
+			  	laser.SpeedY = Speeds[1];
+			  	laser.Sprite.anchor.set(0.5, 0.5);
+			  	console.log(Angle, SpaceShip.Angle);
+  				laser.Sprite.scale.set(0.25, 0.25);
+			  	app.stage.addChild(laser.Sprite);
+			  	Lasers.push(laser);
 			  }
-        if(SpaceShip.SpeedX > SpaceShip.MaxSpeed) { SpaceShip.SpeedX = SpaceShip.MaxSpeed; }
-        if(SpaceShip.SpeedX < -1*SpaceShip.MaxSpeed) { SpaceShip.SpeedX = -1*SpaceShip.MaxSpeed; }
-        if(SpaceShip.SpeedY > SpaceShip.MaxSpeed) { SpaceShip.SpeedY = SpaceShip.MaxSpeed; }
-        if(SpaceShip.SpeedY < -1*SpaceShip.MaxSpeed) { SpaceShip.SpeedY = -1*SpaceShip.MaxSpeed; }
+
+			  if(event.key === 'w' || event.key === 'ArrowUp') { 
+			  	Angle = (SpaceShip.Angle+36000000)%360;
+          
+          let Speeds = GetSpeedsForAngle(Angle, SpaceShip.PowerForwardEngine);
+          console.log(Speeds);
+          SpaceShip.SpeedX += Speeds[0];
+          SpaceShip.SpeedY += Speeds[1];
+
+          if(SpaceShip.SpeedX > SpaceShip.MaxSpeed) { SpaceShip.SpeedX = SpaceShip.MaxSpeed; }
+        	if(SpaceShip.SpeedX < -1*SpaceShip.MaxSpeed) { SpaceShip.SpeedX = -1*SpaceShip.MaxSpeed; }
+        	if(SpaceShip.SpeedY > SpaceShip.MaxSpeed) { SpaceShip.SpeedY = SpaceShip.MaxSpeed; }
+        	if(SpaceShip.SpeedY < -1*SpaceShip.MaxSpeed) { SpaceShip.SpeedY = -1*SpaceShip.MaxSpeed; }
+			  }
+        
 			}, false);
 
 			let app = new PIXI.Application({ 
@@ -139,6 +177,7 @@
 			PIXI.loader
   					.add("sprites/spaceship.png")
   					.add("sprites/GameOver.png")
+  					.add("sprites/laser.png")
   					.add("sprites/asteroid_1.png")
   					.add("sprites/asteroid_2.png")
   					.add("sprites/asteroid_3.png")
@@ -171,27 +210,37 @@
   			SpaceShip.X += SpaceShip.SpeedX;
   			SpaceShip.Y += SpaceShip.SpeedY;
   			SpaceShip.Angle += SpaceShip.ChangeAnrgleSpeed;
-  			SpaceShip.Angle = SpaceShip.Angle%36;
 
   			SpaceShip.Sprite.x = SpaceShip.X;
   			SpaceShip.Sprite.y = SpaceShip.Y;
-  			SpaceShip.Sprite.rotation = SpaceShip.Angle; 
+  			SpaceShip.Sprite.angle = SpaceShip.Angle; 
+
+  			if(SpaceShip.X > 1280 || SpaceShip.X < 0 ||
+  				 SpaceShip.Y > 720 || SpaceShip.Y < 0) {
+  				if(Life) { Dead(); Life = false; }
+  			}
+
+  			for (var i = 0; i < Lasers.length; i++) {
+  				Lasers[i].X += Lasers[i].SpeedX;
+  				Lasers[i].Y += Lasers[i].SpeedY;
+  				Lasers[i].Sprite.x = Lasers[i].X;
+  				Lasers[i].Sprite.y = Lasers[i].Y;
+  				Lasers[i].Sprite.angle = Lasers[i].Angle; 
+  			}
 
   			boom = false;
 
-  			if(Asteroids.length < 15) {
+  			if(Asteroids.length < 35) {
   				Asteroids.push(null);
   				InitAsteroid(Asteroids.length-1, random(1, 3.5));
   			}
 
   			for (var i = 0; i < Asteroids.length; i++) {
   				if(Math.abs(Asteroids[i].X - SpaceShip.X) < 20 && Math.abs(Asteroids[i].Y - SpaceShip.Y) < 20) {
-  					app.stage.addChild(GameOver);
-  					setTimeout(()=>{location.reload();}, 3000);
   					if(Life) {
-  						AddBOOM(SpaceShip.X, SpaceShip.Y).play();
-  						app.stage.removeChild(SpaceShip.Sprite);
+  						Dead();
   						app.stage.removeChild(Asteroids[i].Sprite);
+  						Life = false;
   					}
   				}
   				if(Asteroids[i].X > 1280+10 || Asteroids[i].X < -10 || Asteroids[i].Y > 720+10 || Asteroids[i].Y < -10) { 
@@ -206,7 +255,7 @@
 
   				Asteroids[i].Sprite.x = Asteroids[i].X;
   				Asteroids[i].Sprite.y = Asteroids[i].Y;
-  				Asteroids[i].Sprite.rotation = Asteroids[i].Angle; 
+  				Asteroids[i].Sprite.angle = Asteroids[i].Angle; 
 
   				for (var j = 0; j < Asteroids.length; j++) {
   					if(j != i) {
@@ -226,7 +275,23 @@
   						}
   					}
 					}
+					if(boom) { break; }
 
+					for (var j = 0; j < Lasers.length; j++) {
+						if(Math.abs(Asteroids[i].X - Lasers[j].X) < 15 && Math.abs(Asteroids[i].Y - Lasers[j].Y) < 15) {
+  						if(Asteroids[i].Sprite.scale.x > 2) {
+  							GenerageAsteroidsWreckage(Asteroids[i].X, Asteroids[i].Y, Asteroids[i].Sprite.scale.x)
+  						}
+  						AddBOOM(Asteroids[i].X, Asteroids[i].Y).play();
+  							
+  						app.stage.removeChild(Asteroids[i].Sprite);
+							app.stage.removeChild(Lasers[j].Sprite);
+  						Asteroids.splice(i, 1);
+  						Lasers.splice(j, 1);
+							boom = true; 
+  						break;
+						}
+					}
 					if(boom) { break; }
 				}
 
