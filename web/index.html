@@ -7,15 +7,18 @@
   	<link rel="stylesheet" href="css/Main.css">
 
   	<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/5.1.3/pixi.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.1.1/socket.io.js"></script>
 	</head>
 	<body>
   	<script>
-			let PhysicsFPS = 5; 
+      var socket = io.connect('http://127.0.0.1:8090/'); // соеденение с сервером
+      socket.on('connect', function() { console.log("Connect - OK!"); socket.emit('NewPlayer', [0, 0, 0, 0, 0, 0]); });
+
+			let PhysicsFPS = 5;
 			let SpaceShipSprite;
-			let BOOMTexture;
 			let GameOver;
 			let Life = true;
-			let SpeedLaser = 5;
+			let SpeedLaser = 8;
 			let GunReady = true;
 
 			function sleep(milliseconds) {
@@ -27,6 +30,36 @@
 			}
 			function random(min, max) { return Math.random() * (max - min) + min; }
 
+
+      socket.on('ChangeAsteroid', function(data) { 
+        console.log("OK", data);
+        if(data.length == 2 && data[1] == "DESTROY") {
+          console.log("DESTROY Asteroid");
+          app.stage.removeChild(Asteroids[data[0]].Sprite);
+          Asteroids[data[0]] = null;
+        } else {
+          if(Asteroids[data[0]] == null) {
+            console.log("CREATE Asteroid");
+
+            SpriteAsteroidNumber = parseInt(random(1, 4));
+            Sprite = new PIXI.Sprite(PIXI.loader.resources[`sprites/asteroid_${SpriteAsteroidNumber}.png`].texture);
+            Asteroids[data[0]] = new SpaceObject(Sprite, 0, 0, data[1], data[2], data[3], data[4], 0.5, data[5], data[6], 0.1);
+            Asteroids[data[0]].Sprite.anchor.set(0.5, 0.5);
+            Asteroids[data[0]].Sprite.position.set(Asteroids[data[0]].X, Asteroids[data[0]].Y);
+            Asteroids[data[0]].Sprite.scale.set(data[7], data[7]);
+            app.stage.addChild(Asteroids[data[0]].Sprite);
+          } else {
+            console.log("CHANGE Asteroid");
+
+            Asteroids[data[0]].X = data[1];
+            Asteroids[data[0]].Y = data[2];
+            Asteroids[data[0]].SpeedX = data[3];
+            Asteroids[data[0]].SpeedY = data[4];
+            Asteroids[data[0]].Angle = data[5];
+            Asteroids[data[0]].ChangeAnrgleSpeed = data[6];
+          }
+        }
+      });
 			function InitAsteroid(i, scale, manual=0, x=-1, y=-1, speedx=0, speedy=0, angle=0, speedangle=0) { 
 				SpriteAsteroidNumber = parseInt(random(1, 4));
   			PathToSprite = `sprites/asteroid_${SpriteAsteroidNumber}.png`;
@@ -58,16 +91,20 @@
   			}
 			} 
 
+      socket.on('BOOM', function(data) { console.log("BOOM", data); AddBOOM(data[0], data[1]); });
 			function AddBOOM(x, y) {
-				BOOM = new PIXI.AnimatedSprite(BOOMTexture);
+        let BOOMFrames = ["sprites/boom/0.gif", "sprites/boom/1.gif", "sprites/boom/2.gif", "sprites/boom/3.gif", "sprites/boom/4.gif", "sprites/boom/5.gif"];
+        let BOOMTexture = [];
+        for (let i=0; i < 6; i++) { BOOMTexture.push(PIXI.Texture.from(BOOMFrames[i])); }
+				let BOOM = new PIXI.AnimatedSprite(BOOMTexture);
   			BOOM.scale.set(0.25, 0.25);
 				BOOM.loop = false;
 				BOOM.animationSpeed = 0.15;
 				BOOM.anchor.set(0.5, 0.5);
   			BOOM.position.set(x, y);
   			app.stage.addChild(BOOM);
-  			BOOM.onLoop = function () { app.stage.removeChild(localBOOM); };
-  			return BOOM;
+  			BOOM.onLoop = function () { app.stage.removeChild(BOOM); };
+        BOOM.play();
 			} 
 
 			function Dead() {
@@ -113,7 +150,7 @@
 			}
 
 			let SpaceShip = new SpaceObject(null, 0.1, 0.5, 640, 360, 0, 0, 1.5, random(0, 360), random(0, 0.05), 3);
-			let Asteroids = new Array(15);
+			let Asteroids = new Array();
 			let Lasers = new Array();
 
 			document.addEventListener('keydown', (event) => {
@@ -192,11 +229,9 @@
   			SpaceShip.Sprite.scale.set(1.5, 1);
   			app.stage.addChild(SpaceShip.Sprite);
 
-  			for (var i = 0; i < Asteroids.length; i++) { InitAsteroid(i, random(1, 3.5), 1, random(0, 1280), random(0, 720), Math.random()/2, Math.random()/2, random(0, 360), Math.random()/10); }
+  			for (var i = 0; i < 100; i++) { Asteroids.push(null); }
 
-				let BOOMFrames = ["sprites/boom/0.gif", "sprites/boom/1.gif", "sprites/boom/2.gif", "sprites/boom/3.gif", "sprites/boom/4.gif", "sprites/boom/5.gif"];
-				BOOMTexture = [];
-				for (let i=0; i < 6; i++)	{ BOOMTexture.push(PIXI.Texture.from(BOOMFrames[i])); }
+				
 
 				GameOver = new PIXI.Sprite(PIXI.loader.resources["sprites/GameOver.png"].texture);
 			  GameOver.anchor.set(0.5, 0.5);
@@ -215,10 +250,10 @@
   			SpaceShip.Sprite.y = SpaceShip.Y;
   			SpaceShip.Sprite.angle = SpaceShip.Angle; 
 
-  			if(SpaceShip.X > 1280 || SpaceShip.X < 0 ||
-  				 SpaceShip.Y > 720 || SpaceShip.Y < 0) {
-  				if(Life) { Dead(); Life = false; }
-  			}
+  			//if(SpaceShip.X > 1280 || SpaceShip.X < 0 ||
+  			//	 SpaceShip.Y > 720 || SpaceShip.Y < 0) {
+  			//	if(Life) { Dead(); Life = false; }         ~ ( Событие должно приходить с сервера ) ~
+  			//}
 
   			for (var i = 0; i < Lasers.length; i++) {
   				Lasers[i].X += Lasers[i].SpeedX;
@@ -230,23 +265,16 @@
 
   			boom = false;
 
-  			if(Asteroids.length < 35) {
-  				Asteroids.push(null);
-  				InitAsteroid(Asteroids.length-1, random(1, 3.5));
-  			}
-
   			for (var i = 0; i < Asteroids.length; i++) {
-  				if(Math.abs(Asteroids[i].X - SpaceShip.X) < 20 && Math.abs(Asteroids[i].Y - SpaceShip.Y) < 20) {
-  					if(Life) {
-  						Dead();
-  						app.stage.removeChild(Asteroids[i].Sprite);
-  						Life = false;
-  					}
-  				}
-  				if(Asteroids[i].X > 1280+10 || Asteroids[i].X < -10 || Asteroids[i].Y > 720+10 || Asteroids[i].Y < -10) { 
-							app.stage.removeChild(Asteroids[i].Sprite);
-  						InitAsteroid(i, random(1, 3.5)); 
-  				}
+          if(Asteroids[i] == null) { continue; }
+
+  				//if(Math.abs(Asteroids[i].X - SpaceShip.X) < 20 && Math.abs(Asteroids[i].Y - SpaceShip.Y) < 20) {
+  				//	if(Life) {
+  				//		Dead();
+  				//		app.stage.removeChild(Asteroids[i].Sprite);  ~ ( Событие должно приходить с сервера ) ~
+  				//		Life = false;
+  				//	}
+  				//}
 
   				Asteroids[i].X += Asteroids[i].SpeedX;
   				Asteroids[i].Y += Asteroids[i].SpeedY;
@@ -256,43 +284,6 @@
   				Asteroids[i].Sprite.x = Asteroids[i].X;
   				Asteroids[i].Sprite.y = Asteroids[i].Y;
   				Asteroids[i].Sprite.angle = Asteroids[i].Angle; 
-
-  				for (var j = 0; j < Asteroids.length; j++) {
-  					if(j != i) {
-  						if(Math.abs(Asteroids[i].X - Asteroids[j].X) < 20 && Math.abs(Asteroids[i].Y - Asteroids[j].Y) < 20) {
-  							if(Asteroids[i].Sprite.scale.x > 2 || Asteroids[j].Sprite.scale.x > 2) {
-  								GenerageAsteroidsWreckage((Asteroids[i].X+Asteroids[j].X)/2, (Asteroids[i].Y+Asteroids[j].Y)/2, 
-  																						Math.max(Asteroids[i].Sprite.scale.x, Asteroids[j].Sprite.scale.x)/2)
-  							}
-  							AddBOOM((Asteroids[i].X+Asteroids[j].X)/2, (Asteroids[i].Y+Asteroids[j].Y)/2).play();
-  							
-  							app.stage.removeChild(Asteroids[i].Sprite);
-								app.stage.removeChild(Asteroids[j].Sprite);
-  							Asteroids.splice(i, 1);
-  							if(i>j) { Asteroids.splice(j, 1); } else { Asteroids.splice(j-1, 1); }
-								boom = true; 
-  							break;
-  						}
-  					}
-					}
-					if(boom) { break; }
-
-					for (var j = 0; j < Lasers.length; j++) {
-						if(Math.abs(Asteroids[i].X - Lasers[j].X) < 15 && Math.abs(Asteroids[i].Y - Lasers[j].Y) < 15) {
-  						if(Asteroids[i].Sprite.scale.x > 2) {
-  							GenerageAsteroidsWreckage(Asteroids[i].X, Asteroids[i].Y, Asteroids[i].Sprite.scale.x)
-  						}
-  						AddBOOM(Asteroids[i].X, Asteroids[i].Y).play();
-  							
-  						app.stage.removeChild(Asteroids[i].Sprite);
-							app.stage.removeChild(Lasers[j].Sprite);
-  						Asteroids.splice(i, 1);
-  						Lasers.splice(j, 1);
-							boom = true; 
-  						break;
-						}
-					}
-					if(boom) { break; }
 				}
 
   			sleep(60/PhysicsFPS);
