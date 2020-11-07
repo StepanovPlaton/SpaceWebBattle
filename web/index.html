@@ -14,13 +14,17 @@
     <script>
       var conn = false;
       var socket = io.connect('http://192.168.32.13:8080/'); // соеденение с сервером
-      socket.on('connect', function() { if(!conn) { conn=true; console.log("Connect - OK!"); socket.emit('NewPlayer', [0, 0, 0, 0, 0, 0]); } });
+      socket.on('connect', function() { if(!conn) {
+	  conn=true;
+	  console.log("Connect - OK!");
+	  socket.emit('NewPlayer', [SpaceShip.X, SpaceShip.Y, SpaceShip.SpeedX, SpaceShip.SpeedY, SpaceShip.Angle, SpaceShip.ChangeAnrgleSpeed])
+      }});
 
       let PhysicsFPS = 5;
       let SpaceShipSprite;
       let GameOver;
       let Life = true;
-      let SpeedLaser = 8;
+      let SpeedLaser = 4;
       let GunReady = true;
 
       let oldTime = 0;
@@ -35,20 +39,17 @@
       }
       function random(min, max) { return Math.random() * (max - min) + min; }
 
-      var DestroyErrors = 0;
       socket.on('DestroyAsteroid', Destroy);
       function Destroy(data) {
-          if(Asteroids[data[1]] == null) { DestroyErrors++; console.log(data[1], "DestroyError! Total -", DestroyErrors); }
-          else { app.stage.removeChild(Asteroids[data[1]].Sprite); Asteroids[data[1]] = null; }
-     	  if(Asteroids[data[2]] == null) { DestroyErrors++; console.log(data[2], "DestroyError! Total -", DestroyErrors); }
-          else { app.stage.removeChild(Asteroids[data[2]].Sprite); Asteroids[data[2]] = null; }
+          app.stage.removeChild(Asteroids[data[1]].Sprite); Asteroids[data[1]] = null;
+     	  if(data[2] != -1) {
+	      app.stage.removeChild(Asteroids[data[2]].Sprite); Asteroids[data[2]] = null;
+          }
       }
 
-      var CreateErrors = 0;
+
       socket.on('CreateAsteroid', Create);
       function Create(data) {
-          if(Asteroids[data[0]] != null) { CreateErrors++; console.log(data[0], "CreateError! Total -", CreateErrors, Asteroids[data[0]]);
-					   app.stage.removeChild(Asteroids[data[0]].Sprite); Asteroids[data[0]] = null; } 
 	  SpriteAsteroidNumber = parseInt(random(1, 4));
           Sprite = new PIXI.Sprite(PIXI.loader.resources[`sprites/asteroid_${SpriteAsteroidNumber}.png`].texture);
           Asteroids[data[0]] = new SpaceObject(Sprite, 0, 0, data[1], data[2], data[3], data[4], 0.5, data[5], data[6], 0.1);
@@ -58,19 +59,16 @@
           app.stage.addChild(Asteroids[data[0]].Sprite);
       }
 
-      var UpdateErrors = 0;
       socket.on('UpdateAsteroid', Update);
       function Update(data) {
-	  if(Asteroids[data[0]] != null) {
-	      Asteroids[data[0]].block = true;
-              Asteroids[data[0]].X = data[1];
-              Asteroids[data[0]].Y = data[2];
-              Asteroids[data[0]].SpeedX = data[3];
-              Asteroids[data[0]].SpeedY = data[4];
-              Asteroids[data[0]].Angle = data[5];
-              Asteroids[data[0]].ChangeAnrgleSpeed = data[6];
-              Asteroids[data[0]].block = false;
-	  } else { UpdateErrors++; console.log(data[0], "UpdateError! Total -", UpdateErrors, Asteroids[data[0]]); Create(data); }
+          Asteroids[data[0]].block = true;
+          Asteroids[data[0]].X = data[1];
+          Asteroids[data[0]].Y = data[2];
+          Asteroids[data[0]].SpeedX = data[3];
+          Asteroids[data[0]].SpeedY = data[4];
+          Asteroids[data[0]].Angle = data[5];
+          Asteroids[data[0]].ChangeAnrgleSpeed = data[6];
+          Asteroids[data[0]].block = false;
       }
 
       socket.on('BOOM', function(data) { AddBOOM(data[0], data[1]); });
@@ -89,12 +87,32 @@
         BOOM.play();
       } 
 
-      function Dead() {
-        setTimeout(()=>{app.stage.addChild(GameOver);}, 1000);
-        setTimeout(()=>{location.reload();}, 5000);
-        AddBOOM(SpaceShip.X, SpaceShip.Y).play();
+      socket.on('DEAD', Dead);
+      function Dead(data) {
+        setTimeout(()=>{app.stage.addChild(GameOver);}, 500);
+        setTimeout(()=>{location.reload();}, 3000);
+        AddBOOM(SpaceShip.X, SpaceShip.Y);
         app.stage.removeChild(SpaceShip.Sprite);
         Life = false;
+      }
+      function SendPlayerData() {
+          socket.emit('PlayerData', [SpaceShip.X, SpaceShip.Y, SpaceShip.SpeedX, SpaceShip.SpeedY, SpaceShip.Angle, SpaceShip.ChangeAnrgleSpeed]);
+      }
+
+      socket.on('CreateLaser', CreateLaser);
+      function CreateLaser(data) {
+        let laser = new SpaceObject(null, 0, 0, data[1], data[2], data[3], data[4], SpeedLaser, data[5], data[6], 3);
+        laser.Sprite = new PIXI.Sprite(PIXI.loader.resources["sprites/laser.png"].texture);
+        laser.Sprite.anchor.set(0.5, 0.5);
+        laser.Sprite.scale.set(0.25, 0.25);
+        app.stage.addChild(laser.Sprite);
+        Lasers[data[0]] = laser;
+      }
+ 
+      socket.on('DestroyLaser', DestroyLaser);
+      function DestroyLaser(data) {
+	  app.stage.removeChild(Lasers[data[0]].Sprite);
+          Lasers[data[0]] = null;
       }
 
       function GetSpeedsForAngle(Angle, Engine) {
@@ -149,16 +167,9 @@
         if((event.key === ' ' || event.key === 'Spacebar') && GunReady) { 
           GunReady = false;
           setTimeout(()=>{GunReady = true;}, 1000);
-          Angle = (SpaceShip.Angle+36000000)%360;
-          let laser = new SpaceObject(null, 0, 0, SpaceShip.X, SpaceShip.Y, 0, 0, SpeedLaser, (SpaceShip.Angle+6000000)%6, 0, 0);
-          laser.Sprite = new PIXI.Sprite(PIXI.loader.resources["sprites/laser.png"].texture);
-          let Speeds = GetSpeedsForAngle(Angle, SpeedLaser);
-          laser.SpeedX = Speeds[0];
-          laser.SpeedY = Speeds[1];
-          laser.Sprite.anchor.set(0.5, 0.5);
-          laser.Sprite.scale.set(0.25, 0.25);
-          app.stage.addChild(laser.Sprite);
-          Lasers.push(laser);
+	    Speeds = GetSpeedsForAngle((SpaceShip.Angle+360000000) % 360, SpeedLaser)
+	    console.log("FIRE");
+          socket.emit('Fire', [SpaceShip.X+Speeds[0], SpaceShip.Y+Speeds[1], Speeds[0], Speeds[1], (SpaceShip.Angle+360000000) % 360, 0]);	    
         }
 
         if(event.key === 'w' || event.key === 'ArrowUp') { 
@@ -210,7 +221,8 @@
         SpaceShip.Sprite.scale.set(1.5, 1);
         app.stage.addChild(SpaceShip.Sprite);
 
-        for (var i = 0; i < 10; i++) { Asteroids.push(null); }
+        for (var i = 0; i < 100; i++) { Asteroids.push(null); }
+        for (var i = 0; i < 100; i++) { Lasers.push(null); }
 
         GameOver = new PIXI.Sprite(PIXI.loader.resources["sprites/GameOver.png"].texture);
         GameOver.anchor.set(0.5, 0.5);
@@ -219,30 +231,25 @@
 
         app.ticker.add(delta => WhileTrue(delta));
       }
-      //setInterval(WhileTrue, 50)
-      function WhileTrue() {
-	//sleep(1000);
 
+      setInterval(SendPlayerData, 100)
+      function WhileTrue() {
 	oldTime = time;
         time = (new Date).getTime();
         let delta = time - oldTime;  
-	  //console.log(time, oldTime, delta);
-        SpaceShip.X += SpaceShip.SpeedX;
-        SpaceShip.Y += SpaceShip.SpeedY;
-        SpaceShip.Angle += SpaceShip.ChangeAnrgleSpeed;
+	  
+        SpaceShip.X += SpaceShip.SpeedX * delta/10;
+        SpaceShip.Y += SpaceShip.SpeedY * delta/10;
+        SpaceShip.Angle += SpaceShip.ChangeAnrgleSpeed * delta/10;
 
         SpaceShip.Sprite.x = SpaceShip.X;
         SpaceShip.Sprite.y = SpaceShip.Y;
         SpaceShip.Sprite.angle = SpaceShip.Angle; 
 
-        //if(SpaceShip.X > 1280 || SpaceShip.X < 0 ||
-        //   SpaceShip.Y > 720 || SpaceShip.Y < 0) {
-        //  if(Life) { Dead(); Life = false; }         ~ ( Событие должно приходить с сервера ) ~
-        //}
-
         for (var i = 0; i < Lasers.length; i++) {
-          Lasers[i].X += Lasers[i].SpeedX;
-          Lasers[i].Y += Lasers[i].SpeedY;
+	  if(Lasers[i] == null) { continue; }    
+          Lasers[i].X += Lasers[i].SpeedX * delta/10;
+          Lasers[i].Y += Lasers[i].SpeedY * delta/10;
           Lasers[i].Sprite.x = Lasers[i].X;
           Lasers[i].Sprite.y = Lasers[i].Y;
           Lasers[i].Sprite.angle = Lasers[i].Angle; 
@@ -252,27 +259,16 @@
 	for (var i = 0; i < Asteroids.length; i++) {
           if(Asteroids[i] == null) { continue; }
 	    if(Asteroids[i].block) { continue; }
-          //if(i == 0) {
-	  //  socket.emit('Sync', [Asteroids[i].X,  Asteroids[i].Y]);
-	  //}
-	    //if(Math.abs(Asteroids[i].X - SpaceShip.X) < 20 && Math.abs(Asteroids[i].Y - SpaceShip.Y) < 20) {
-          //  if(Life) {
-          //    Dead();
-          //    app.stage.removeChild(Asteroids[i].Sprite);  ~ ( Событие должно приходить с сервера ) ~
-          //    Life = false;
-          //  }
-          //}
-          Asteroids[i].X += Asteroids[i].SpeedX * delta/10;
+
+            Asteroids[i].X += Asteroids[i].SpeedX * delta/10;
           Asteroids[i].Y += Asteroids[i].SpeedY * delta/10;
           Asteroids[i].Angle += Asteroids[i].ChangeAnrgleSpeed * delta/10;
-          //Asteroids[i].Angle = Asteroids[i].Angle%36;
-
+         
           Asteroids[i].Sprite.x = Asteroids[i].X;
           Asteroids[i].Sprite.y = Asteroids[i].Y;
           Asteroids[i].Sprite.angle = Asteroids[i].Angle; 
         }
         
-        //sleep(60/PhysicsFPS);
       }
     </script>
   
