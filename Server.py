@@ -7,9 +7,6 @@ from flask_socketio import *
 from threading import Thread
 import random, time, logging
 
-#from gevent import monkey
-#monkey.patch_all()
-
 import eventlet
 eventlet.monkey_patch()
 
@@ -51,7 +48,11 @@ class Player:
         self.SpeedY = SpeedY
         self.Angle = Angle
         self.ChangeAnrgleSpeed = ChangeAnrgleSpeed
-        self.LastPackage = time.time()
+        self.TimeOut = time.time()
+
+def CreateChangePackage_for_Player(i):
+    return [i, Players[i].id, Players[i].X, Players[i].Y, Players[i].SpeedX,
+                  Players[i].SpeedY, Players[i].Angle, Players[i].ChangeAnrgleSpeed]
 
 Asteroids = [None for i in range(100)]
 NumberOfAsteroids = 0
@@ -59,15 +60,16 @@ NumberOfAsteroids = 0
 Lasers = [None for i in range(100)]
 NumberOfLasers = 0
 
-Players = []
+Players = [None, None, None, None]
+NumberOfPlayers = 0
 
 OldTime, Time, DeltaTime = 0, 0, 0
 SyncTime = int(round(time.time() * 1000))
-AsteroidSync = 1
+PlayerSync = 0
 
 def PhysicalCycle():
     time.sleep(2)
-    global NumberOfAsteroids, Time, OldTime, DeltaTime, SyncTime, AsteroidSync, NumberOfLasers
+    global NumberOfAsteroids, Time, OldTime, DeltaTime, SyncTime, PlayerSync, NumberOfLasers, NumberOfPlayers
     while True:
         BOOM = False  
 
@@ -89,7 +91,7 @@ def PhysicalCycle():
                 break
             for j in range(len(Asteroids)):
                 if(Asteroids[j] is None): continue
-                if(abs(Lasers[i].X - Asteroids[j].X) < 20 and abs(Lasers[i].Y - Asteroids[j].Y) < 20):
+                if(abs(Lasers[i].X - Asteroids[j].X) < 25 and abs(Lasers[i].Y - Asteroids[j].Y) < 25):
                     with FlaskServer.test_request_context('/'):
                         WebSocket.emit("DestroyLaser", [i], broadcast=True)
                         WebSocket.emit("DestroyAsteroid", ["DESTROY", j, -1], broadcast=True)
@@ -109,7 +111,7 @@ def PhysicalCycle():
                         X = Random(-10, GameAreaWidth+10)
                         Y = Random(-10, GameAreaHeight+10)
                         if(X < 0 or X > GameAreaWidth or Y < 0 or Y > GameAreaHeight): break
-                    Asteroids[i] = SpaceObject(X, Y, Random(-0.5, 0.5), Random(-0.5, 0.5), Random(0, 360), Random(0, 1)/15, Random(1, 3.5))
+                    Asteroids[i] = SpaceObject(X, Y, Random(-0.1, 0.1), Random(-0.1, 0.1), Random(0, 360), Random(0, 1)/15, Random(1.5, 3))
                     with FlaskServer.test_request_context('/'): WebSocket.emit("CreateAsteroid", CreateChangePackage_for_Asteroid(i), broadcast=True)
                     NumberOfAsteroids += 1
                 else: continue
@@ -147,18 +149,33 @@ def PhysicalCycle():
                     break
             if(BOOM): break
             for j in range(len(Players)):
+                if(Players[j] is None): continue
+                if(time.time() - Players[j].TimeOut > 1000):
+                    Players[j] = None
+                    print("Player", j, "Time Out")
+                    continue
+                Players[j].X += Players[j].SpeedX
+                Players[j].Y += Players[j].SpeedY
+                Players[j].Angle += Players[j].ChangeAnrgleSpeed
+                if(Time - SyncTime < 100):
+                    with FlaskServer.test_request_context('/'):
+                        WebSocket.emit("UpdatePlayer", CreateChangePackage_for_Player(j), broadcast=True)
+                
                 if(abs(Asteroids[i].X - Players[j].X) < 20 and abs(Asteroids[i].Y - Players[j].Y) < 20):
                     with FlaskServer.test_request_context('/'):
-                        WebSocket.emit("DEAD", room=Players[j].id)
+                        WebSocket.emit("DestroyPlayer", CreateChangePackage_for_Player(j), broadcast=True)
                         WebSocket.emit("DestroyAsteroid", ["DESTROY", i, -1], broadcast=True)
                     Asteroids[i] = None
-                    Players.pop(j)
+                    Players[j] = None
+                    NumberOfPlayers -= 1
                     break
                 if(Players[j].X > GameAreaWidth or Players[j].X < 0 or Players[j].Y > GameAreaHeight or Players[j].Y < 0):
                     with FlaskServer.test_request_context('/'):
-                        WebSocket.emit("DEAD", room=Players[j].id)
-                    Players.pop(j)
+                        WebSocket.emit("DestroyPlayer", CreateChangePackage_for_Player(j), broadcast=True)
+                    Players[j] = None
+                    NumberOfPlayers -= 1
                     break
+            SyncTime = Time
         WebSocket.sleep(0.1)
             # Сделать осколки астероидов!
 
@@ -175,13 +192,15 @@ def SendFiles(path): return send_from_directory(FlaskServer.template_folder, pat
 @WebSocket.on('PlayerData')
 def PlayerData(Data):
     for i in range(len(Players)):
-        if(Players[i].id == request.sid):
-            Players[i].X = Data[0]
-            Players[i].Y = Data[1]
-            Players[i].SpeedX = Data[2]
-            Players[i].SpeedY = Data[3]
-            Players[i].Angle = Data[4]
-            Players[i].ChangeAnrgleSpeed = Data[5]
+        if(not Players[i] is None):
+            if(Players[i].id == request.sid):
+                Players[i].X = Data[0]
+                Players[i].Y = Data[1]
+                Players[i].SpeedX = Data[2]
+                Players[i].SpeedY = Data[3]
+                Players[i].Angle = Data[4]
+                Players[i].ChangeAnrgleSpeed = Data[5]
+                Players[i].TimeOut = time.time()
 
 @WebSocket.on('Fire')
 def Fire(Data):
@@ -192,13 +211,21 @@ def Fire(Data):
             emit("CreateLaser", [i, Data[0], Data[1], Data[2], Data[3], Data[4], Data[5]], broadcast=True)
             NumberOfLasers += 1
             break
-
             
 @WebSocket.on('NewPlayer')
 def NewPlayer(Data):
-    Players.append(Player(request.sid, Data[0], Data[1], Data[2], Data[3], Data[4], Data[5]))
+    global NumberOfPlayers
+    for i in range(len(Players)):
+        if(Players[i] is None):
+            print("SEND YOU")
+            emit("You", [i, request.sid])
+            Players[i] = Player(request.sid, Data[0], Data[1], Data[2], Data[3], Data[4], Data[5])
+            emit("CreatePlayer", CreateChangePackage_for_Player(i), broadcast=True)
+            NumberOfPlayers += 1
+            break
+    for i in range(len(Players)):
+        if(not Players[i] is None): emit("CreatePlayer", CreateChangePackage_for_Player(i))
     for i in range(len(Asteroids)):
-        if(Asteroids[i] != None): emit("CreateAsteroid", CreateChangePackage_for_Asteroid(i))
+        if(not Asteroids[i] is None): emit("CreateAsteroid", CreateChangePackage_for_Asteroid(i))
 
 WebSocket.run(FlaskServer, host="0.0.0.0", port=8080, log_output=True)
-#FlaskServer.run(host='0.0.0.0', port=8080)

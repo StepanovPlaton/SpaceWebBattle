@@ -27,6 +27,9 @@
       let SpeedLaser = 4;
       let GunReady = true;
 
+      let Sid = -1;
+      let Ind = -1;
+      
       let oldTime = 0;
       let time = 0;
 
@@ -61,6 +64,7 @@
 
       socket.on('UpdateAsteroid', Update);
       function Update(data) {
+	  while(Asteroids[data[0]].block) {}
           Asteroids[data[0]].block = true;
           Asteroids[data[0]].X = data[1];
           Asteroids[data[0]].Y = data[2];
@@ -87,15 +91,53 @@
         BOOM.play();
       } 
 
-      socket.on('DEAD', Dead);
+      socket.on('You', (data) => { Sid = data[1]; Ind = data[0]; });
+ 
+      socket.on('CreatePlayer', CreatePlayer);
+      function CreatePlayer(data) {
+	  console.log("CREATE PLAYER", data, Players, Ind);
+	  if(data[0] == Ind) { return; }
+          Players[data[0]] = new SpaceObject(new PIXI.Sprite(PIXI.loader.resources["sprites/spaceship.png"].texture),
+					     0.1, 0.5, data[2], data[3], data[4], data[5], 1.5, data[6], data[7], 3);
+	  console.log(Players[data[0]]);
+	  Players[data[0]].Sprite.anchor.set(0.5, 0.5);
+          Players[data[0]].Sprite.position.set(640, 360);
+          Players[data[0]].Sprite.scale.set(1.5, 1);
+          app.stage.addChild(Players[data[0]].Sprite);
+      }
+      socket.on('UpdatePlayer', UpdatePlayer);
+      function UpdatePlayer(data) {
+	  if(data[0] == Ind) { return; }
+          if(Players[data[0]] == null) { return; }
+
+	  while(Players[data[0]].block) {}
+          Players[data[0]].block = true;
+	  Players[data[0]].Xtarget = data[2];
+	  Players[data[0]].Ytarget = data[3];
+	  Players[data[0]].SpeedXtarget = data[4];
+          Players[data[0]].SpeedYtarget = data[5];
+	  Players[data[0]].Angletarget = data[6];
+	  Players[data[0]].ChangeAnrgleSpeedtarget = data[7];
+	  Players[data[0]].block = false;
+	  //console.log("UpdatePlayer", data, Players, Ind);
+      }
+	
+      socket.on('DestroyPlayer', Dead);
       function Dead(data) {
-        setTimeout(()=>{app.stage.addChild(GameOver);}, 500);
-        setTimeout(()=>{location.reload();}, 3000);
-        AddBOOM(SpaceShip.X, SpaceShip.Y);
-        app.stage.removeChild(SpaceShip.Sprite);
-        Life = false;
+	console.log("DestroyPlayer", data, Players, Ind);
+	if(data[0] == Ind) {
+          setTimeout(()=>{app.stage.addChild(GameOver);}, 500);
+          setTimeout(()=>{location.reload();}, 3000);
+          Life = false;
+	  AddBOOM(SpaceShip.X, SpaceShip.Y);
+          app.stage.removeChild(SpaceShip.Sprite);
+	} else {
+ 	  AddBOOM(Players[data[0]].X, Players[data[0]].Y);
+          app.stage.removeChild(Players[data[0]].Sprite);
+        }
       }
       function SendPlayerData() {
+	  console.log("SEND DATA");
           socket.emit('PlayerData', [SpaceShip.X, SpaceShip.Y, SpaceShip.SpeedX, SpaceShip.SpeedY, SpaceShip.Angle, SpaceShip.ChangeAnrgleSpeed]);
       }
 
@@ -140,12 +182,19 @@
           this.Sprite = Sprite;
           this.PowerForwardEngine = PowerForwardEngine;
           this.PowerTurnEngine = PowerTurnEngine;
+	    
           this.X = X; this.Y = Y;
-          this.SpeedX = SpeedX; this.SpeedY = SpeedY;
-          this.MaxSpeed = MaxSpeed;
-          this.Angle = Angle;
-          this.ChangeAnrgleSpeed = ChangeAnrgleSpeed;
-          this.MaxChangeAnrgleSpeed = MaxChangeAnrgleSpeed;
+          this.Xtarget = -1; this.Ytarget = -1;
+
+	  this.SpeedX = SpeedX; this.SpeedY = SpeedY;
+          this.SpeedXtarget = -1; this.SpeedYtarget = -1;
+
+	  this.MaxSpeed = MaxSpeed;
+
+	  this.Angle = Angle; this.ChangeAnrgleSpeed = ChangeAnrgleSpeed;
+          this.Angletarget = -1; this.ChangeAnrgleSpeedtarget = -1;
+
+	  this.MaxChangeAnrgleSpeed = MaxChangeAnrgleSpeed;
 	  this.block = false;
         }
       }
@@ -153,7 +202,8 @@
       var SpaceShip = new SpaceObject(null, 0.1, 0.5, 640, 360, 0, 0, 1.5, random(0, 360), random(0, 0.05), 3);
       var Asteroids = new Array();
       var Lasers = new Array();
-
+      var Players = new Array();
+      
       document.addEventListener('keydown', (event) => {
         if(event.key === 'd' || event.key === 'ArrowRight') { 
           SpaceShip.ChangeAnrgleSpeed = SpaceShip.ChangeAnrgleSpeed + SpaceShip.PowerTurnEngine; 
@@ -167,8 +217,7 @@
         if((event.key === ' ' || event.key === 'Spacebar') && GunReady) { 
           GunReady = false;
           setTimeout(()=>{GunReady = true;}, 1000);
-	    Speeds = GetSpeedsForAngle((SpaceShip.Angle+360000000) % 360, SpeedLaser)
-	    console.log("FIRE");
+	    Speeds = GetSpeedsForAngle((SpaceShip.Angle+360000000) % 360, SpeedLaser);
           socket.emit('Fire', [SpaceShip.X+Speeds[0], SpaceShip.Y+Speeds[1], Speeds[0], Speeds[1], (SpaceShip.Angle+360000000) % 360, 0]);	    
         }
 
@@ -223,6 +272,7 @@
 
         for (var i = 0; i < 100; i++) { Asteroids.push(null); }
         for (var i = 0; i < 100; i++) { Lasers.push(null); }
+        for (var i = 0; i < 4; i++) { Players.push(null); }
 
         GameOver = new PIXI.Sprite(PIXI.loader.resources["sprites/GameOver.png"].texture);
         GameOver.anchor.set(0.5, 0.5);
@@ -232,7 +282,7 @@
         app.ticker.add(delta => WhileTrue(delta));
       }
 
-      setInterval(SendPlayerData, 100)
+      setInterval(SendPlayerData, 100);
       function WhileTrue() {
 	oldTime = time;
         time = (new Date).getTime();
@@ -245,6 +295,35 @@
         SpaceShip.Sprite.x = SpaceShip.X;
         SpaceShip.Sprite.y = SpaceShip.Y;
         SpaceShip.Sprite.angle = SpaceShip.Angle; 
+
+        for (var i = 0; i < Players.length; i++) {
+            if(Players[i] != null && i != Ind) {
+		if(Players[i].block) { continue; }
+		Players[i].block = true;
+		
+		Players[i].SpeedX = Players[i].SpeedX * 0.9 + Players[i].SpeedXtarget * 0.1;
+		Players[i].SpeedY = Players[i].SpeedY * 0.9 + Players[i].SpeedYtarget * 0.1;
+
+		Players[i].X += Players[i].SpeedX * delta/10 /2;
+                Players[i].Y += Players[i].SpeedY * delta/10 /2;
+
+		Players[i].Xtarget += Players[i].SpeedX * delta/10 /2;
+		Players[i].Ytarget += Players[i].SpeedY * delta/10 /2;
+
+		Players[i].X = Players[i].X * 0.9 + Players[i].Xtarget * 0.1;
+		Players[i].Y = Players[i].Y * 0.9 + Players[i].Ytarget * 0.1;
+
+                Players[i].ChangeAnrgleSpeed = Players[i].ChangeAnrgleSpeed * 0.9 + Players[i].ChangeAnrgleSpeedtarget * 0.1;
+		Players[i].Angle += Players[i].ChangeAnrgleSpeed * delta/10 /2;
+		Players[i].Angletarget += Players[i].ChangeAnrgleSpeed * delta/10 /2;
+		Players[i].Angle = Players[i].Angle * 0.9 + Players[i].Angletarget * 0.1;
+
+                Players[i].Sprite.x = Players[i].X;
+		Players[i].Sprite.y = Players[i].Y;
+		Players[i].Sprite.angle = Players[i].Angle;
+		Players[i].block = false;
+	    }
+	}
 
         for (var i = 0; i < Lasers.length; i++) {
 	  if(Lasers[i] == null) { continue; }    
