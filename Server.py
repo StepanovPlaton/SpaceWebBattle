@@ -96,7 +96,7 @@ def PhysicalCycle():
 
             for j in range(len(Players)):
                 if(Players[j] is None): continue
-                if(abs(Lasers[i].X - Players[j].X) < 25 and abs(Lasers[i].Y - Players[j].Y) < 25):
+                if((Lasers[i].X - Players[j].X)**2 + (Lasers[i].Y - Players[j].Y)**2 < 20**2):
                     with FlaskServer.test_request_context('/'):
                         WebSocket.emit("DestroyLaser", [i], broadcast=True)
                         WebSocket.emit("DestroyPlayer", CreateChangePackage_for_Player(j), broadcast=True)
@@ -111,7 +111,7 @@ def PhysicalCycle():
             if(BOOM): break
             for j in range(len(Asteroids)):
                 if(Asteroids[j] is None): continue
-                if(abs(Lasers[i].X - Asteroids[j].X) < 25 and abs(Lasers[i].Y - Asteroids[j].Y) < 25):
+                if((Lasers[i].X - Asteroids[j].X)**2 + (Lasers[i].Y - Asteroids[j].Y)**2 < (Asteroids[j].Scale*10)**2):
                     with FlaskServer.test_request_context('/'):
                         WebSocket.emit("DestroyLaser", [i], broadcast=True)
                         WebSocket.emit("DestroyAsteroid", ["DESTROY", j, -1], broadcast=True)
@@ -131,7 +131,7 @@ def PhysicalCycle():
                         X = Random(-10, GameAreaWidth+10)
                         Y = Random(-10, GameAreaHeight+10)
                         if(X < 0 or X > GameAreaWidth or Y < 0 or Y > GameAreaHeight): break
-                    Asteroids[i] = SpaceObject(X, Y, Random(-0.1, 0.1), Random(-0.1, 0.1), Random(0, 360), Random(0, 1)/15, Random(1.5, 3))
+                    Asteroids[i] = SpaceObject(X, Y, Random(-0.05, 0.05), Random(-0.05, 0.05), Random(0, 360), Random(0, 1)/15, Random(1.5, 4.5))
                     with FlaskServer.test_request_context('/'): WebSocket.emit("CreateAsteroid", CreateChangePackage_for_Asteroid(i), broadcast=True)
                     NumberOfAsteroids += 1
                 else: continue
@@ -154,7 +154,7 @@ def PhysicalCycle():
             for j in range(len(Asteroids)):
                 if(Asteroids[j] == None): continue
 
-                if(abs(Asteroids[j].X - Asteroids[i].X) < 20 and abs(Asteroids[j].Y - Asteroids[i].Y) < 20 and not i == j):
+                if((Asteroids[j].X - Asteroids[i].X)**2 + (Asteroids[j].Y - Asteroids[i].Y)**2 < (max(Asteroids[j].Scale, Asteroids[i].Scale)*10)**2 and not i == j):
                     with FlaskServer.test_request_context('/'):
                         WebSocket.emit("BOOM", [(Asteroids[j].X+Asteroids[i].X)/2, (Asteroids[j].Y+Asteroids[i].Y)/2], broadcast=True)
 
@@ -181,7 +181,7 @@ def PhysicalCycle():
                     with FlaskServer.test_request_context('/'):
                         WebSocket.emit("UpdatePlayer", CreateChangePackage_for_Player(j), broadcast=True)
                 
-                if(abs(Asteroids[i].X - Players[j].X) < 20 and abs(Asteroids[i].Y - Players[j].Y) < 20):
+                if((Asteroids[i].X - Players[j].X)**2 + (Asteroids[i].Y - Players[j].Y)**2 < (Asteroids[i].Scale*10)**2):
                     with FlaskServer.test_request_context('/'):
                         WebSocket.emit("DestroyPlayer", CreateChangePackage_for_Player(j), broadcast=True)
                         WebSocket.emit("DestroyAsteroid", ["DESTROY", i, -1], broadcast=True)

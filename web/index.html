@@ -43,6 +43,9 @@
       let Backward = null;
       let Left = null;
       let Right = null;
+
+      let SpaceStation1 = null;
+      let SpaceStation2 = null;
       
       function sleep(milliseconds) {
         const date = Date.now();
@@ -235,7 +238,7 @@
         let laser = new SpaceObject(null, 0, 0, 0, data[1], data[2], data[3], data[4], SpeedLaser, data[5], data[6], 3);
         laser.Sprite = new PIXI.Sprite(PIXI.loader.resources["sprites/laser.png"].texture);
         laser.Sprite.anchor.set(0.5, 0.5);
-        laser.Sprite.scale.set(0.25, 0.25);
+        laser.Sprite.scale.set(0.5, 0.5);
         app.stage.addChild(laser.Sprite);
         Lasers[data[0]] = laser;
       }
@@ -326,6 +329,8 @@
       PIXI.loader
             .add("sprites/GameOver.png")
             .add("sprites/laser.png")
+            .add("sprites/SpaceStation.png")
+            .add("sprites/Bomb.png")
             .add("sprites/Asteroids/asteroid_1.png")
             .add("sprites/Asteroids/asteroid_2.png")
             .add("sprites/Asteroids/asteroid_3.png")
@@ -352,6 +357,12 @@
         GameOver.position.set(640, 360);
         GameOver.scale.set(1, 1);
 
+        SpaceStation1 = new PIXI.Sprite(PIXI.loader.resources["sprites/SpaceStation.png"].texture);
+        SpaceStation1.anchor.set(0.5, 0.5);
+        SpaceStation1.position.set(0, 0);
+        SpaceStation1.scale.set(3, 3);
+	app.stage.addChild(SpaceStation1);
+	  
         app.ticker.add(delta => WhileTrue(delta));
       }
 
@@ -365,7 +376,8 @@
 	oldTime = time;
         time = (new Date).getTime();
         let delta = time - oldTime;  
-
+ 
+        SpaceStation1.angle += 0.1 * delta/10 /2;
 
         if(Forward != null) {
 	  Forward.position.set(SpaceShip.X, SpaceShip.Y);
